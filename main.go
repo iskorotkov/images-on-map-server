@@ -38,13 +38,13 @@ func main() {
 		cursor, err := db.Collection("markers").Find(c.Request().Context(), bson.D{})
 		if err != nil {
 			c.Logger().Error(err)
-			return c.String(http.StatusServiceUnavailable, err.Error())
+			return c.JSON(http.StatusServiceUnavailable, Error{err})
 		}
 
 		var results []bson.M
 		if err := cursor.All(context.Background(), &results); err != nil {
 			c.Logger().Error(err)
-			return c.String(http.StatusServiceUnavailable, err.Error())
+			return c.JSON(http.StatusServiceUnavailable, Error{err})
 		}
 
 		return c.JSON(http.StatusOK, results)
@@ -53,65 +53,73 @@ func main() {
 		var body Marker
 		if err := c.Bind(&body); err != nil {
 			c.Logger().Info(err)
-			return c.String(http.StatusBadRequest, err.Error())
+			return c.JSON(http.StatusBadRequest, Error{err})
 		}
 
 		if err := body.Validate(); err != nil {
 			c.Logger().Info(err)
-			return c.String(http.StatusBadRequest, err.Error())
+			return c.JSON(http.StatusBadRequest, Error{err})
 		}
 
-		if _, err := db.Collection("markers").InsertOne(c.Request().Context(), body); err != nil {
+		if _, err := db.Collection("markers").InsertOne(c.Request().Context(), body.Normalize()); err != nil {
 			var mongoErr mongo.WriteException
 			if errors.As(err, &mongoErr) && mongoErr.HasErrorCode(11000) {
 				s := "duplicated id"
 				c.Logger().Info(s)
-				return c.String(http.StatusBadRequest, s)
+				return c.JSON(http.StatusBadRequest, ErrorString{s})
 			}
 
 			c.Logger().Error(err)
-			return c.String(http.StatusServiceUnavailable, err.Error())
+			return c.JSON(http.StatusServiceUnavailable, Error{err})
 		}
 
-		return c.String(http.StatusCreated, "marker created")
+		return c.NoContent(http.StatusCreated)
 	})
 	group.DELETE("/:id", func(c echo.Context) error {
 		id := c.Param("id")
 		if _, err := db.Collection("markers").DeleteOne(c.Request().Context(), bson.M{"_id": id}); err != nil {
 			c.Logger().Error(err)
-			return c.String(http.StatusServiceUnavailable, err.Error())
+			return c.JSON(http.StatusServiceUnavailable, Error{err})
 		}
 
-		return c.String(http.StatusOK, "marker deleted")
+		return c.NoContent(http.StatusOK)
 	})
 	group.PUT("/:id", func(c echo.Context) error {
 		var body Marker
 		if err := c.Bind(&body); err != nil {
 			c.Logger().Info(err)
-			return c.String(http.StatusBadRequest, err.Error())
+			return c.JSON(http.StatusBadRequest, Error{err})
 		}
 
 		id := c.Param("id")
 		if body.ID != id {
 			s := "id in path and body doesn't match"
-			c.Logger().Info(err)
-			return c.String(http.StatusBadRequest, s)
+			c.Logger().Info(s)
+			return c.JSON(http.StatusBadRequest, ErrorString{s})
 		}
 
 		if err := body.Validate(); err != nil {
 			c.Logger().Info(err)
-			return c.String(http.StatusBadRequest, err.Error())
+			return c.JSON(http.StatusBadRequest, Error{err})
 		}
 
-		if _, err := db.Collection("markers").ReplaceOne(c.Request().Context(), bson.M{"_id": id}, body); err != nil {
+		if _, err := db.Collection("markers").ReplaceOne(c.Request().Context(), bson.M{"_id": id}, body.Normalize()); err != nil {
 			c.Logger().Error(err)
-			return c.String(http.StatusServiceUnavailable, err.Error())
+			return c.JSON(http.StatusServiceUnavailable, Error{err})
 		}
 
-		return c.String(http.StatusOK, "marker updated")
+		return c.NoContent(http.StatusOK)
 	})
 
 	e.Logger.Fatal(e.Start(":8080"))
+}
+
+type Error struct {
+	Error error `json:"error"`
+}
+
+type ErrorString struct {
+	Error string `json:"error"`
 }
 
 type Marker struct {
@@ -119,6 +127,14 @@ type Marker struct {
 	Name     string  `json:"name" bson:"name"`
 	Location Coords  `json:"location" bson:"location"`
 	Images   []Image `json:"images" bson:"images"`
+}
+
+func (m Marker) Normalize() Marker {
+	if m.Images == nil {
+		m.Images = []Image{}
+	}
+
+	return m
 }
 
 func (m Marker) Validate() error {
