@@ -41,7 +41,7 @@ func main() {
 			return c.JSON(http.StatusServiceUnavailable, Error{err})
 		}
 
-		var results []bson.M
+		var results []Marker
 		if err := cursor.All(context.Background(), &results); err != nil {
 			c.Logger().Error(err)
 			return c.JSON(http.StatusServiceUnavailable, Error{err})
