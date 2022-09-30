@@ -3,7 +3,7 @@ module github.com/iskorotkov/images-on-map-server
 go 1.18
 
 require (
-	github.com/labstack/echo/v4 v4.6.3
+	github.com/labstack/echo/v4 v4.9.0
 	go.mongodb.org/mongo-driver v1.8.2
 )
 
